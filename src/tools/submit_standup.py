@@ -136,7 +136,7 @@ I can only accept one submission per person per day.
 
 If you need to make changes, please reach out to your team lead manually.
 
-Want to see today's summary instead? 📊"""
+Want to see today's summary instead?"""
     
     # Step 6: Save to database
     submitted_at = get_submission_time_wat()
@@ -157,7 +157,7 @@ Want to see today's summary instead? 📊"""
         return f"Error saving your standup, {user_name}. Please try again or contact support."
     
     # Step 7: Build success response
-    response = f"""Perfect timing, {user_name}! ✅
+    response = f"""Perfect timing, {user_name}!
 
 I've recorded your standup update:"""
     

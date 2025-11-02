@@ -57,7 +57,7 @@ def get_window_message(user_name: str) -> str:
     status = get_window_status()
     
     if status == "before":
-        return f"""Thanks for being so early, {user_name}! 😊
+        return f"""Thanks for being so early, {user_name}!
 
 However, standup submissions don't open until 9:30 AM WAT. 
 Please come back then to submit your update.
@@ -72,11 +72,11 @@ Your update for today can no longer be included in the daily summary.
 
 You can submit your standup tomorrow starting at 9:30 AM WAT.
 
-Want to see today's summary? Just ask! 📊"""
+Want to see today's summary? Just ask!"""
     
     else:
         # This shouldn't be called during window, but just in case
-        return f"Perfect timing, {user_name}! ✅"
+        return f"Perfect timing, {user_name}!"
 
 
 def get_submission_time_wat() -> datetime:

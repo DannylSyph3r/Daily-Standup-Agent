@@ -59,7 +59,7 @@ async def get_summary(query: str, context) -> str:
     if cached:
         # Cache hit - return immediately
         generated_at = cached['generated_at'].strftime("%I:%M %p WAT")
-        return f"""# 📊 Daily Standup Summary - {date_label}
+        return f"""# Daily Standup Summary - {date_label}
 *Cached from {generated_at} | {cached['total_submissions']} team members reported*
 
 {cached['full_summary']}"""
@@ -115,7 +115,7 @@ Team members can submit their updates during this window."""
     )
     
     # Step 6: Return formatted summary
-    return f"""# 📊 Daily Standup Summary - {date_label}
+    return f"""# Daily Standup Summary - {date_label}
 *Generated at {generated_at.strftime("%I:%M %p WAT")} | {len(reports)} team members reported*
 
 {summary_text}"""

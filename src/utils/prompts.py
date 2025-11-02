@@ -104,7 +104,7 @@ Generate a comprehensive summary with these sections:
 
 Be specific, actionable, and highlight both achievements and concerns.
 Format in markdown with clear headers and bullet points.
-Use emojis sparingly for visual appeal (🟢 for active work, ⚠️ for blockers, 🤝 for collaboration, 💡 for insights).
+Do NOT use emojis in the output.
 
 Include a header with date and participation rate."""
 
