@@ -3,50 +3,8 @@ Daily Standup Agent
 Main agent definition with conversational capabilities
 """
 from google.adk.agents import LlmAgent
-from google.adk.tools import Tool
 from src.config import GEMINI_MODEL
 from src.tools import submit_standup, get_summary
-
-
-# ============================================================================
-# Function Tool Definitions
-# ============================================================================
-
-submit_standup_tool = Tool(
-    name="submit_standup",
-    description="""Submit a daily standup report. Use this when the user is providing their standup update.
-    
-This tool handles:
-- Time window validation (9:30 AM - 12:30 PM WAT)
-- Conversational name extraction (asks user if name missing)
-- Validates today's plan is present
-- Prevents duplicate submissions
-- Saves to database
-
-The user MUST include:
-1. Their name (tool will ask if missing)
-2. What they're working on TODAY (rejects if missing)
-
-Optional fields:
-- Yesterday's work
-- Blockers
-- Additional notes""",
-    func=submit_standup
-)
-
-get_summary_tool = Tool(
-    name="get_summary",
-    description="""Get the team standup summary for a specific date.
-    
-This tool:
-- Parses natural language dates ("today", "yesterday", "2025-11-15", etc.)
-- Returns cached summary if available (fast)
-- Generates new summary with LLM if cache miss
-- Provides team overview, individual updates, blockers, and insights
-
-Use this when user asks for team summary, updates, or wants to see standup reports.""",
-    func=get_summary
-)
 
 
 # ============================================================================
@@ -147,5 +105,5 @@ CRITICAL REMINDERS:
 - Let tools handle ALL business logic and validation
 - Tools maintain conversation state across turns
 - Keep your direct responses concise and helpful""",
-    tools=[submit_standup_tool, get_summary_tool]
+    tools=[submit_standup, get_summary]
 )

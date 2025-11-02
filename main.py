@@ -1,6 +1,6 @@
 """
 Daily Standup Agent - Main Entry Point
-Exposes the agent via A2A protocol for platform-agnostic integration
+Runs the agent with ADK's built-in server
 """
 import asyncio
 import sys
@@ -52,39 +52,134 @@ async def shutdown_agent():
     print("=" * 70)
 
 
-def start_a2a_server():
+def start_server():
     """
-    Start the A2A server to expose the agent.
+    Start the ADK development server.
     
-    This makes the agent accessible via the A2A protocol at:
-    http://localhost:{A2A_PORT}/a2a/agent/dailyStandupAgent
+    The agent will be accessible at:
+    http://localhost:8001
     """
-    from google.adk.a2a import to_a2a
+    from google.adk.runners import Runner
+    from google.adk.sessions import InMemorySessionService
     import uvicorn
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
     
     print("\n" + "=" * 70)
-    print("Starting A2A Server")
+    print("Starting Daily Standup Agent Server")
     print("=" * 70)
     print(f"Agent Name: {standup_agent.name}")
     print(f"Port: {A2A_PORT}")
-    print(f"A2A Endpoint: http://localhost:{A2A_PORT}/")
     print("=" * 70)
     print()
-    print("The agent is now accessible via A2A protocol!")
-    print("A2A platforms can connect to this agent using the endpoint above.")
+    
+    # Initialize agent
+    asyncio.run(initialize_agent())
+    
+    # Create FastAPI app
+    app = FastAPI(title="Daily Standup Agent")
+    
+    # Create session service and runner
+    session_service = InMemorySessionService()
+    runner = Runner(
+        agent=standup_agent,
+        app_name=APP_NAME,
+        session_service=session_service
+    )
+    
+    @app.get("/")
+    async def root():
+        return JSONResponse({
+            "name": "Daily Standup Agent",
+            "status": "running",
+            "description": "AI-powered daily standup coordinator",
+            "endpoints": {
+                "health": "/health",
+                "agent_info": "/info",
+                "chat": "/chat"
+            }
+        })
+    
+    @app.get("/health")
+    async def health():
+        return JSONResponse({"status": "healthy"})
+    
+    @app.get("/info")
+    async def info():
+        return JSONResponse({
+            "agent_name": standup_agent.name,
+            "model": standup_agent.model,
+            "description": standup_agent.description,
+            "capabilities": [
+                "Standup collection (9:30 AM - 12:30 PM WAT)",
+                "Team summary generation",
+                "Historical query support"
+            ]
+        })
+    
+    @app.post("/chat")
+    async def chat(request: dict):
+        """
+        Chat endpoint for interacting with the agent.
+        
+        Request body:
+        {
+            "message": "Your message here",
+            "session_id": "optional-session-id",
+            "user_id": "optional-user-id"
+        }
+        """
+        try:
+            from google.genai.types import Content, Part
+            
+            message = request.get("message", "")
+            session_id = request.get("session_id", "default")
+            user_id = request.get("user_id", "default_user")
+            
+            if not message:
+                return JSONResponse(
+                    {"error": "Message is required"},
+                    status_code=400
+                )
+            
+            # Create content
+            user_content = Content(parts=[Part(text=message)])
+            
+            # Run agent
+            response_text = ""
+            async for event in runner.run(
+                user_id=user_id,
+                session_id=session_id,
+                new_message=user_content
+            ):
+                if event.is_final_response():
+                    response_text = event.content.parts[0].text if event.content else ""
+            
+            return JSONResponse({
+                "response": response_text,
+                "session_id": session_id
+            })
+            
+        except Exception as e:
+            print(f"Error in chat endpoint: {e}")
+            return JSONResponse(
+                {"error": str(e)},
+                status_code=500
+            )
+    
+    print("Agent is now running!")
+    print(f"Access the agent at: http://localhost:{A2A_PORT}")
+    print(f"API endpoints:")
+    print(f"  - GET  /       : Root info")
+    print(f"  - GET  /health : Health check")
+    print(f"  - GET  /info   : Agent info")
+    print(f"  - POST /chat   : Chat with agent")
     print()
     print("Press CTRL+C to stop the server")
     print("=" * 70)
     print()
     
-    # Initialize agent before starting server
-    asyncio.run(initialize_agent())
-    
-    # Convert agent to A2A and start server
     try:
-        app = to_a2a(standup_agent)
-        
-        # Run with uvicorn
         uvicorn.run(
             app,
             host="0.0.0.0",
@@ -100,18 +195,13 @@ def start_a2a_server():
 def main():
     """Main entry point."""
     try:
-        start_a2a_server()
+        start_server()
     except Exception as e:
         print(f"\n❌ Fatal error: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 
 if __name__ == "__main__":
-    # Handle nested event loop for certain environments
-    try:
-        import nest_asyncio
-        nest_asyncio.apply()
-    except ImportError:
-        print("Note: nest_asyncio not available - running without nested loop support")
-    
     main()
