@@ -1,10 +1,11 @@
 """
-Daily Standup Agent - Main Entry Point
-Runs the agent with ADK's built-in server
+Daily Standup Agent - Main Entry Point (FIXED)
+Runs the agent with ADK's built-in server with proper async handling
 """
 import asyncio
 import sys
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from src.config import check_environment, A2A_PORT, APP_NAME, DATABASE_URL
@@ -12,8 +13,13 @@ from src.agents import standup_agent
 from src.database import create_pool, close_pool
 
 
-async def initialize_agent():
-    """Initialize the agent and database connection."""
+@asynccontextmanager
+async def lifespan(app):
+    """
+    FastAPI lifespan event handler.
+    Properly initializes and cleans up resources within FastAPI's event loop.
+    """
+    # ===== STARTUP =====
     print("\n" + "=" * 70)
     print("Daily Standup Agent - Initialization")
     print("=" * 70)
@@ -24,7 +30,7 @@ async def initialize_agent():
         print("Please fix the configuration issues before starting the agent.")
         sys.exit(1)
     
-    # Create database pool
+    # Create database pool IN THE FASTAPI EVENT LOOP
     try:
         await create_pool()
         print("✓ Database connection established")
@@ -40,10 +46,11 @@ async def initialize_agent():
     print("✓ Agent initialized successfully!")
     print("=" * 70)
     print()
-
-
-async def shutdown_agent():
-    """Cleanup on shutdown."""
+    
+    # Yield control to the application
+    yield
+    
+    # ===== SHUTDOWN =====
     print("\n" + "=" * 70)
     print("Shutting down Daily Standup Agent...")
     print("=" * 70)
@@ -67,22 +74,23 @@ def build_telex_response(
     Build a Telex-formatted JSON-RPC 2.0 response.
     
     Args:
-        request_id: Original request ID
-        context_id: Context ID for session tracking
-        response_text: Agent's response text
-        message_id: Unique message ID
-        task_id: Task ID
+        request_id: The request ID from the incoming request
+        context_id: The context ID (conversation ID)
+        response_text: The agent's response text
+        message_id: Generated message ID for this response
+        task_id: Task ID for tracking
         history: Conversation history
         
     Returns:
-        Telex-formatted response dictionary
+        Telex-formatted JSON-RPC 2.0 response dict
     """
-    timestamp = datetime.utcnow().isoformat() + "Z"
+    if history is None:
+        history = []
     
-    # Build response message
-    response_message = {
+    # Build assistant response message
+    assistant_message = {
         "kind": "message",
-        "role": "agent",
+        "role": "assistant",
         "parts": [
             {
                 "kind": "text",
@@ -96,50 +104,24 @@ def build_telex_response(
         "metadata": None
     }
     
-    # Build artifacts (including the response)
-    artifacts = [
-        {
-            "artifactId": str(uuid.uuid4()),
-            "name": "standup_agent_response",
-            "parts": [
-                {
-                    "kind": "text",
-                    "text": response_text,
-                    "data": None,
-                    "file_url": None
-                }
-            ]
-        }
-    ]
+    # Append to history
+    history.append(assistant_message)
     
-    # Add response to history
-    if history is None:
-        history = []
-    history.append(response_message)
-    
+    # Build Telex response
     return {
         "jsonrpc": "2.0",
         "id": request_id,
         "result": {
-            "id": task_id,
-            "contextId": context_id,
-            "status": {
-                "state": "completed",
-                "timestamp": timestamp,
-                "message": response_message
-            },
-            "artifacts": artifacts,
-            "history": history,
-            "kind": "task"
-        },
-        "error": None
+            "task_id": task_id,
+            "context_id": context_id,
+            "history": history
+        }
     }
 
 
 def start_server():
     """
-    Start the ADK development server.
-    
+    Start the FastAPI server with proper async initialization.
     The agent will be accessible at:
     http://localhost:8001
     """
@@ -158,13 +140,13 @@ def start_server():
     print("=" * 70)
     print()
     
-    # Initialize agent
-    asyncio.run(initialize_agent())
+    # Create FastAPI app WITH LIFESPAN
+    app = FastAPI(
+        title="Daily Standup Agent",
+        lifespan=lifespan  # This is the key fix!
+    )
     
-    # Create FastAPI app
-    app = FastAPI(title="Daily Standup Agent")
-    
-    # Create session service and runner
+    # Create session service and runner (NOT async operations)
     print(f"🔗 Initializing DatabaseSessionService with: {DATABASE_URL}")
     session_service = DatabaseSessionService(db_url=DATABASE_URL)
     runner = Runner(
@@ -288,72 +270,73 @@ def start_server():
         """
         Telex A2A webhook endpoint.
         
-        Accepts JSON-RPC 2.0 format:
+        Expected Telex JSON-RPC 2.0 request format:
         {
             "jsonrpc": "2.0",
-            "id": "request-id",
-            "method": "message/send",
+            "method": "agent/sendMessage",
             "params": {
+                "contextId": "conversation-uuid",
                 "message": {
-                    "kind": "message",
                     "role": "user",
-                    "parts": [{"kind": "text", "text": "..."}],
-                    "messageId": "msg-id"
+                    "content": [{
+                        "type": "text",
+                        "text": "User's message"
+                    }]
                 },
-                "contextId": "context-id",  // Session identifier
-                "configuration": {...}
-            }
+                "history": [...previous messages...]
+            },
+            "id": "request-uuid"
         }
         
-        Returns Telex-formatted JSON-RPC 2.0 response with artifacts and history.
+        Returns Telex-formatted JSON-RPC 2.0 response
         """
         try:
-            # Parse request body
             body = await request.json()
             
-            print("\n" + "=" * 70)
-            print("Incoming Telex Request")
-            print("=" * 70)
-            
-            # Extract JSON-RPC fields
+            # Extract request components
             request_id = body.get("id", str(uuid.uuid4()))
-            method = body.get("method", "")
+            method = body.get("method")
             params = body.get("params", {})
             
-            print(f"Request ID: {request_id}")
+            print("\n" + "=" * 70)
+            print(f"📬 Incoming Telex Request")
             print(f"Method: {method}")
+            print(f"Request ID: {request_id}")
+            print("=" * 70)
             
-            # Extract contextId (session identifier from Telex)
+            if method != "agent/sendMessage":
+                return JSONResponse({
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {
+                        "code": -32601,
+                        "message": f"Method '{method}' not found"
+                    }
+                })
+            
+            # Extract message data
             context_id = params.get("contextId")
-            if not context_id:
-                context_id = str(uuid.uuid4())
-                print(f"⚠️  No contextId provided, generated: {context_id}")
-            else:
-                print(f"Context ID: {context_id}")
-            
-            # Extract message
             message_data = params.get("message", {})
-            parts = message_data.get("parts", [])
             
-            # Extract text from parts (handle multiple parts)
+            # Extract text from message content
+            content = message_data.get("content", [])
             message_text = ""
-            for part in parts:
-                if part.get("kind") == "text":
-                    message_text += part.get("text", "") + " "
+            for content_item in content:
+                if content_item.get("type") == "text":
+                    message_text = content_item.get("text", "")
+                    break
             
-            message_text = message_text.strip()
-            
-            if not message_text:
-                print("⚠️  No message text found in request")
+            if not context_id or not message_text:
                 return JSONResponse({
                     "jsonrpc": "2.0",
                     "id": request_id,
                     "error": {
                         "code": -32602,
-                        "message": "No message text found in request"
+                        "message": "Invalid params: contextId and message.content required"
                     }
                 })
             
+            print(f"Context ID: {context_id}")
             print(f"Message: {message_text}")
             print("=" * 70)
             
@@ -361,7 +344,7 @@ def start_server():
             session_id = context_id
             user_id = context_id
             
-            # Get or create session (get_session returns None if not found)
+            # Get or create session
             session = await session_service.get_session(
                 app_name=APP_NAME,
                 user_id=user_id,
@@ -369,7 +352,6 @@ def start_server():
             )
             
             if session is None:
-                # Create new session if doesn't exist
                 session = await session_service.create_session(
                     app_name=APP_NAME,
                     user_id=user_id,
@@ -471,8 +453,6 @@ def start_server():
         )
     except KeyboardInterrupt:
         print("\n\nReceived shutdown signal...")
-    finally:
-        asyncio.run(shutdown_agent())
 
 
 def main():
