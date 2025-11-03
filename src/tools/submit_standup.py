@@ -5,6 +5,7 @@ Handles standup submission with conversational name extraction
 import json
 from datetime import date
 from google.genai import types
+from google.adk.tools import ToolContext
 from src.utils import (
     is_within_window,
     get_window_message,
@@ -18,7 +19,7 @@ from src.database import has_submitted_today, save_standup_report
 
 async def submit_standup(
     message: str,
-    context
+    tool_context: ToolContext
 ) -> str:
     """
     Submit a daily standup report with conversational name extraction.
@@ -32,7 +33,6 @@ async def submit_standup(
     
     Args:
         message: Raw standup message from user
-        context: Tool context with session state
         
     Returns:
         Response message to user
@@ -62,56 +62,49 @@ async def submit_standup(
         
     except Exception as e:
         print(f"Error extracting standup data: {e}")
-        return "Sorry, I couldn't understand your standup format. Please try again with:\n- Your name\n- What you're working on today\n- (Optional) Yesterday's work\n- (Optional) Blockers"
+        return "Sorry, I couldn't understand your standup format. Please try again with: 'Hi, I'm [Your Name]. Yesterday I [work]. Today I'm [plan].'"
     
-    # Step 2: Check for name - use conversation state if missing
+    # Step 2: Handle missing name with conversation state
     user_name = extracted.get("user_name")
     
     if not user_name or user_name == "null":
-        # Check if we've asked for name before (conversation state)
-        if context.state.get("awaiting_name"):
-            # This is the response to our name question
-            # Try to extract name from this message alone
-            name_extraction_prompt = get_name_extraction_prompt(message)
+        # Check if we asked for name before (using session state)
+        asked_for_name = tool_context.state.get("asked_for_name", False)
+        
+        if not asked_for_name:
+            # First time - ask for name and save the original message
+            tool_context.state["asked_for_name"] = True
+            tool_context.state["pending_standup_message"] = message
+            return "Thanks for the update! Before I save your standup, I need to know your name. What's your name?"
+        else:
+            # User is responding with their name
+            # Extract name from current message
+            name_prompt = get_name_extraction_prompt(message)
             
             try:
                 name_response = client.models.generate_content(
                     model=GEMINI_MODEL,
-                    contents=name_extraction_prompt
+                    contents=name_prompt
                 )
-                
                 name_text = name_response.text.strip()
                 if name_text.startswith('```json'):
                     name_text = name_text.replace('```json', '').replace('```', '').strip()
-                
                 name_data = json.loads(name_text)
                 user_name = name_data.get("user_name")
                 
-                if user_name and user_name != "null":
-                    # Got the name! Retrieve original standup data from state
-                    original_data = context.state.get("pending_standup_data")
-                    if not original_data:
-                        return "Sorry, I lost track of your standup. Please submit it again with your name included."
-                    
-                    # Clear conversation state
-                    context.state["awaiting_name"] = False
-                    context.state["pending_standup_data"] = None
-                    
-                    # Use original standup data with new name
-                    extracted = original_data
-                    extracted["user_name"] = user_name
-                else:
-                    return "I still couldn't get your name. Please tell me your name clearly (e.g., 'I'm Sarah' or 'My name is John')"
-                    
+                if not user_name or user_name == "null":
+                    return "I couldn't extract your name from that. Please tell me your name clearly, like 'I'm John' or 'My name is Sarah'."
+                
+                # Clear the state flags
+                tool_context.state.pop("asked_for_name", None)
+                tool_context.state.pop("pending_standup_message", None)
+                
             except Exception as e:
-                print(f"Error extracting name from response: {e}")
-                return "I couldn't understand your name. Please say it clearly (e.g., 'I'm Sarah')"
-        else:
-            # First time - ask for name and store standup data in state
-            context.state["awaiting_name"] = True
-            context.state["pending_standup_data"] = extracted
-            
-            return "Thanks for the update! Before I save your standup, I need to know your name. What's your name?"
+                print(f"Error extracting name: {e}")
+                return "I had trouble understanding your name. Please tell me your name clearly."
+    
+    if not user_name:
+        return "Before I save your standup, I need to know your name. What's your name?"
     
     # Step 3: Validate today's plan is present (CRITICAL)
     today_plan = extracted.get("today_plan")
@@ -157,7 +150,7 @@ Want to see today's summary instead?"""
         return f"Error saving your standup, {user_name}. Please try again or contact support."
     
     # Step 7: Build success response
-    response = f"""Perfect timing, {user_name}!
+    response = f"""Perfect timing, {user_name}! ✅
 
 I've recorded your standup update:"""
     

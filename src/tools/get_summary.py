@@ -20,7 +20,7 @@ from src.database import (
 )
 
 
-async def get_summary(query: str, context) -> str:
+async def get_summary(query: str) -> str:
     """
     Get team standup summary for a specific date.
     
@@ -34,7 +34,6 @@ async def get_summary(query: str, context) -> str:
     
     Args:
         query: Natural language date query (e.g., "today", "yesterday", "2025-11-15")
-        context: Tool context
         
     Returns:
         Formatted team summary
@@ -78,44 +77,27 @@ Team members can submit their updates during this window."""
             return f"No standup reports found for {date_label}."
     
     # Step 4: Generate summary with LLM
-    summary_prompt = get_summary_prompt(reports)
+    total_reports = len(reports)
+    summary_prompt = get_summary_prompt(reports, target_date, total_reports)
     
     try:
-        response = client.models.generate_content(
+        summary_response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=summary_prompt
         )
         
-        summary_text = response.text.strip()
+        summary_text = summary_response.text.strip()
         
     except Exception as e:
         print(f"Error generating summary: {e}")
-        # Fallback to basic summary
-        summary_text = f"""**Team Updates - {date_label}**
-
-{len(reports)} team members submitted standups:
-
-"""
-        for report in reports:
-            summary_text += f"""**{report['user_name']}:**
-- Today: {report['today_plan']}
-"""
-            if report.get('blockers'):
-                summary_text += f"- Blockers: {report['blockers']}\n"
-            
-            summary_text += "\n"
+        return f"I encountered an error generating the summary for {date_label}. Please try again."
     
     # Step 5: Cache the generated summary
     generated_at = get_current_wat_time()
-    await cache_summary(
-        summary_date=target_date,
-        summary_text=summary_text,
-        total_submissions=len(reports),
-        generated_at=generated_at
-    )
+    await cache_summary(target_date, summary_text, total_reports, generated_at)
     
     # Step 6: Return formatted summary
     return f"""# Daily Standup Summary - {date_label}
-*Generated at {generated_at.strftime("%I:%M %p WAT")} | {len(reports)} team members reported*
+*Generated at {generated_at.strftime("%I:%M %p WAT")} | {total_reports} team members reported*
 
 {summary_text}"""
