@@ -168,7 +168,7 @@ def start_server():
     session_service = InMemorySessionService()
     runner = Runner(
         agent=standup_agent,
-        app_name=APP_NAME,
+        app_name="agents",
         session_service=session_service
     )
     
@@ -241,7 +241,7 @@ def start_server():
             
             # Run agent
             response_text = ""
-            async for event in runner.run(
+            async for event in runner.run_async(
                 user_id=user_id,
                 session_id=session_id,
                 new_message=user_content
@@ -346,7 +346,7 @@ def start_server():
             
             # Run agent
             response_text = ""
-            async for event in runner.run(
+            async for event in runner.run_async(
                 user_id=user_id,
                 session_id=session_id,
                 new_message=user_content
