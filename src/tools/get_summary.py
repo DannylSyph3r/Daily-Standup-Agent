@@ -78,7 +78,7 @@ Team members can submit their updates during this window."""
     
     # Step 4: Generate summary with LLM
     total_reports = len(reports)
-    summary_prompt = get_summary_prompt(reports, target_date, total_reports)
+    summary_prompt = get_summary_prompt(reports)
     
     try:
         summary_response = client.models.generate_content(
