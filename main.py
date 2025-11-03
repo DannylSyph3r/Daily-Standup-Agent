@@ -261,7 +261,7 @@ def start_server():
             
             # Run agent
             response_text = ""
-            async for event in runner.run(
+            async for event in runner.run_async(
                 user_id=user_id,
                 session_id=session.id,
                 new_message=user_content
@@ -385,7 +385,7 @@ def start_server():
             
             # Run agent
             response_text = ""
-            async for event in runner.run(
+            async for event in runner.run_async(
                 user_id=user_id,
                 session_id=session.id,
                 new_message=user_content
