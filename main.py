@@ -7,7 +7,7 @@ import sys
 import uuid
 from datetime import datetime
 from typing import Dict, Any, List, Optional
-from src.config import check_environment, A2A_PORT, APP_NAME
+from src.config import check_environment, A2A_PORT, APP_NAME, DATABASE_URL
 from src.agents import standup_agent
 from src.database import create_pool, close_pool
 
@@ -144,7 +144,7 @@ def start_server():
     http://localhost:8001
     """
     from google.adk.runners import Runner
-    from google.adk.sessions import InMemorySessionService
+    from google.adk.sessions import DatabaseSessionService
     import uvicorn
     from fastapi import FastAPI, Request
     from fastapi.responses import JSONResponse
@@ -165,10 +165,11 @@ def start_server():
     app = FastAPI(title="Daily Standup Agent")
     
     # Create session service and runner
-    session_service = InMemorySessionService()
+    print(f"🔗 Initializing DatabaseSessionService with: {DATABASE_URL}")
+    session_service = DatabaseSessionService(db_url=DATABASE_URL)
     runner = Runner(
         agent=standup_agent,
-        app_name="agents",
+        app_name=APP_NAME,
         session_service=session_service
     )
     
@@ -236,14 +237,33 @@ def start_server():
                     status_code=400
                 )
             
+            # Get or create session (get_session returns None if not found)
+            session = await session_service.get_session(
+                app_name=APP_NAME,
+                user_id=user_id,
+                session_id=session_id
+            )
+            
+            if session is None:
+                # Create new session if doesn't exist
+                session = await session_service.create_session(
+                    app_name=APP_NAME,
+                    user_id=user_id,
+                    session_id=session_id,
+                    state={}
+                )
+                print(f"✨ Created new session: {session_id}")
+            else:
+                print(f"📝 Retrieved existing session: {session_id}")
+            
             # Create content
             user_content = Content(parts=[Part(text=message)])
             
             # Run agent
             response_text = ""
-            async for event in runner.run_async(
+            async for event in runner.run(
                 user_id=user_id,
-                session_id=session_id,
+                session_id=session.id,
                 new_message=user_content
             ):
                 if event.is_final_response():
@@ -251,7 +271,7 @@ def start_server():
             
             return JSONResponse({
                 "response": response_text,
-                "session_id": session_id
+                "session_id": session.id
             })
             
         except Exception as e:
@@ -341,14 +361,33 @@ def start_server():
             session_id = context_id
             user_id = context_id
             
+            # Get or create session (get_session returns None if not found)
+            session = await session_service.get_session(
+                app_name=APP_NAME,
+                user_id=user_id,
+                session_id=session_id
+            )
+            
+            if session is None:
+                # Create new session if doesn't exist
+                session = await session_service.create_session(
+                    app_name=APP_NAME,
+                    user_id=user_id,
+                    session_id=session_id,
+                    state={}
+                )
+                print(f"✨ Created new session: {session_id}")
+            else:
+                print(f"📝 Retrieved existing session: {session_id}")
+            
             # Create content
             user_content = Content(parts=[Part(text=message_text)])
             
             # Run agent
             response_text = ""
-            async for event in runner.run_async(
+            async for event in runner.run(
                 user_id=user_id,
-                session_id=session_id,
+                session_id=session.id,
                 new_message=user_content
             ):
                 if event.is_final_response():
@@ -417,7 +456,7 @@ def start_server():
     print(f"\nSession Management:")
     print(f"  /chat  - Uses 'session_id' from request or generates UUID")
     print(f"  /telex - Uses Telex's 'contextId' as session_id")
-    print(f"  Each conversation isolated by session_id")
+    print(f"  Sessions stored in PostgreSQL (survives restarts!)")
     print()
     print("Press CTRL+C to stop the server")
     print("=" * 70)
