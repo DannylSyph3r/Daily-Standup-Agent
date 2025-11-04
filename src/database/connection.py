@@ -1,13 +1,11 @@
 """
-Database Connection Management
-Handles PostgreSQL connection pooling with asyncpg
+Database Connection Management. Handles PostgreSQL connection pooling with asyncpg
 """
 import asyncpg
 from typing import Optional
 from src.config import DATABASE_URL
 
 
-# Global connection pool
 _pool: Optional[asyncpg.Pool] = None
 
 

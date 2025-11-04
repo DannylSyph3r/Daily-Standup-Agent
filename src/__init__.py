@@ -1,10 +1,5 @@
-"""
-Daily Standup Agent - Source Package
-Main package for the Daily Standup Agent
-"""
-
 __version__ = "1.0.0"
-__author__ = "Daily Standup Agent Team"
+__author__ = "Slethware the Dev"
 
 from . import agents
 from . import config

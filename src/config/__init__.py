@@ -1,8 +1,3 @@
-"""
-Configuration package for Daily Standup Agent
-Exports all settings and validation functions
-"""
-
 from .settings import (
     GOOGLE_API_KEY,
     GEMINI_MODEL,

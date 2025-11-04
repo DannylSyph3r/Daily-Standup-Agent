@@ -1,7 +1,7 @@
 """
-Environment validation for Daily Standup Agent
-Checks all required dependencies and configurations
+Environment validation for Daily Standup Agent. Checks all required dependencies and configurations
 """
+
 import sys
 from src.config.settings import validate_config
 

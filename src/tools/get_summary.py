@@ -1,7 +1,7 @@
 """
-Get Summary Function Tool
 Handles on-demand summary generation with smart caching
 """
+
 import json
 from datetime import date
 from google.genai import types

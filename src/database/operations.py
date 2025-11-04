@@ -1,6 +1,5 @@
 """
 Database Operations for Daily Standup Agent
-All database queries and operations
 """
 from datetime import date, datetime
 from typing import Optional, List, Dict, Any

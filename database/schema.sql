@@ -1,6 +1,3 @@
--- Daily Standup Agent Database Schema
--- PostgreSQL 14+
-
 -- ============================================================================
 -- Standup Reports Table
 -- ============================================================================
@@ -12,7 +9,7 @@ CREATE TABLE IF NOT EXISTS standup_reports (
     
     -- Structured fields (extracted by LLM)
     yesterday_work TEXT,
-    today_plan TEXT NOT NULL,  -- REQUIRED field
+    today_plan TEXT NOT NULL,
     blockers TEXT,
     additional_notes TEXT,
     
@@ -55,7 +52,6 @@ CREATE INDEX IF NOT EXISTS idx_summaries_date
 -- ============================================================================
 -- Cache Invalidation Function
 -- ============================================================================
--- CRITICAL: This function invalidates cached summaries when new standup is submitted
 CREATE OR REPLACE FUNCTION invalidate_summary_cache()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -75,9 +71,3 @@ CREATE TRIGGER trigger_invalidate_cache
     AFTER INSERT ON standup_reports
     FOR EACH ROW
     EXECUTE FUNCTION invalidate_summary_cache();
-
--- ============================================================================
--- Grant Permissions (adjust user as needed)
--- ============================================================================
--- GRANT ALL PRIVILEGES ON TABLE standup_reports TO your_db_user;
--- GRANT ALL PRIVILEGES ON TABLE daily_summaries TO your_db_user;

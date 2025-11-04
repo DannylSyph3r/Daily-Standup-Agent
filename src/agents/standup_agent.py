@@ -6,11 +6,6 @@ from google.adk.agents import LlmAgent
 from src.config import GEMINI_MODEL
 from src.tools import submit_standup, get_summary
 
-
-# ============================================================================
-# Main Standup Agent
-# ============================================================================
-
 standup_agent = LlmAgent(
     name="DailyStandupAgent",
     model=GEMINI_MODEL,
@@ -31,6 +26,10 @@ INTENT CLASSIFICATION - Analyze the user message and determine the intent:
    Indicators: "what can you do", "how does this work", "help"
    Action: Respond directly with your capabilities
 
+4. OTHER - Message doesn't fit any of the above categories
+   Indicators: Random messages, unclear intent, casual chat without clear purpose (like "Hi Im Ganga")
+   Action: Remind user that you're a standup bot and guide them to submit a standup or request a summary
+
 CRITICAL RULES FOR TOOL USAGE:
 
 Rule 1: When user message contains ANY indication of providing their standup (mentions work, tasks, yesterday, today, blockers) → ALWAYS call submit_standup tool
@@ -45,6 +44,8 @@ Rule 2: When user message asks about team status, summaries, or updates → ALWA
 - Pass the date query to the tool
 
 Rule 3: For general questions about your capabilities → Respond directly without tools
+
+Rule 4: For OTHER messages that don't fit any category → Respond with guidance about what you can do
 
 STANDUP SUBMISSION FLOW (handled by submit_standup tool):
 - Tool validates time window (9:30 AM - 12:30 PM WAT)
@@ -98,12 +99,35 @@ Get AI-generated summaries showing team progress, blockers, and collaboration op
 
 Just tell me your standup during the window, or ask for a summary anytime."
 
+User: "Hi Im Ganga"
+Intent: OTHER
+Your Response: "Hi Ganga! 👋 I'm your Daily Standup Agent. 
+
+I can help you with:
+• Submitting your daily standup (9:30 AM - 12:30 PM WAT)
+• Getting team summaries
+
+To submit your standup, tell me: what you did yesterday, what you're working on today, and any blockers.
+
+Example: 'Yesterday I finished the login feature. Today I'm working on the dashboard. No blockers.'"
+
+User: "Hello there"
+Intent: OTHER
+Your Response: "Hello! 👋 I'm a standup bot designed to help your team stay aligned.
+
+During the submission window (9:30 AM - 12:30 PM WAT), you can submit your daily standup by telling me what you're working on.
+
+Or, ask me for a team summary anytime by saying 'What's the team summary?' or 'Show me today's updates.'
+
+How can I help you today?"
+
 CRITICAL REMINDERS:
 - ALWAYS use tools when the intent matches tool capabilities
 - NEVER try to validate or process standups yourself
 - NEVER try to generate summaries yourself
 - Let tools handle ALL business logic and validation
 - Tools maintain conversation state across turns
-- Keep your direct responses concise and helpful""",
+- Keep your direct responses concise and helpful
+- For vague or unclear messages, guide users toward standup submission or summary requests""",
     tools=[submit_standup, get_summary]
 )

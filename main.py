@@ -1,5 +1,5 @@
 """
-Daily Standup Agent - Main Entry Point (FIXED)
+Daily Standup Agent - Main Entry Point
 Runs the agent with ADK's built-in server with proper async handling
 """
 import asyncio
@@ -30,7 +30,7 @@ async def lifespan(app):
         print("Please fix the configuration issues before starting the agent.")
         sys.exit(1)
     
-    # Create database pool IN THE FASTAPI EVENT LOOP
+    # Create database pool in the FastAPI Event Loop
     try:
         await create_pool()
         print("✓ Database connection established")
@@ -47,7 +47,6 @@ async def lifespan(app):
     print("=" * 70)
     print()
     
-    # Yield control to the application
     yield
     
     # ===== SHUTDOWN =====
@@ -140,13 +139,12 @@ def start_server():
     print("=" * 70)
     print()
     
-    # Create FastAPI app WITH LIFESPAN
     app = FastAPI(
         title="Daily Standup Agent",
-        lifespan=lifespan  # This is the key fix!
+        lifespan=lifespan
     )
     
-    # Create session service and runner (NOT async operations)
+    # Create session service and runner
     print(f"🔗 Initializing DatabaseSessionService with: {DATABASE_URL}")
     session_service = DatabaseSessionService(db_url=DATABASE_URL)
     runner = Runner(
@@ -206,12 +204,12 @@ def start_server():
         try:
             message = request.get("message", "")
             
-            # Get or generate session_id for testing
+            # Get or generate session_id
             session_id = request.get("session_id")
             if not session_id:
                 session_id = f"chat-{str(uuid.uuid4())}"
             
-            user_id = session_id  # Use same value for simplicity
+            user_id = session_id
             
             if not message:
                 return JSONResponse(
