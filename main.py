@@ -246,28 +246,30 @@ def start_server():
                 # Create content
                 user_content = Content(parts=[Part(text=message_text)])
                 
-                # Run agent with improved response extraction
+                # ===== START OF LOGIC FIX =====
+                # We continuously update response_text with the last-known text,
+                # whether from the agent's direct reply OR a tool's function_response.
                 response_text = ""
+                
                 async for event in runner.run_async(
                     user_id=user_id,
                     session_id=session.id,
                     new_message=user_content
                 ):
-                    if event.is_final_response():
-                        # Extract text from response, handling both direct responses and tool results
-                        if event.content and event.content.parts:
-                            text_parts = []
-                            for part in event.content.parts:
-                                if hasattr(part, 'text') and part.text:
-                                    text_parts.append(part.text)
-                            response_text = " ".join(text_parts).strip()
-                        
-                        # If still empty, try to extract from the event itself
-                        if not response_text and event.content:
-                            # Try to get string representation as last resort
-                            content_str = str(event.content)
-                            if content_str and content_str != "None":
-                                response_text = content_str
+                    if event.content and event.content.parts:
+                        for part in event.content.parts:
+                            if hasattr(part, 'text') and part.text:
+                                # This is a direct text response from the agent
+                                response_text = part.text.strip()
+                            
+                            if hasattr(part, 'function_response') and part.function_response:
+                                # This is the result from a tool call
+                                if (part.function_response.response and 
+                                    'result' in part.function_response.response and 
+                                    part.function_response.response['result']):
+                                    
+                                    response_text = part.function_response.response['result'].strip()
+                # ===== END OF LOGIC FIX =====
                 
                 print(f"\n✅ Response: {response_text[:100] if response_text else '(empty)'}...")
                 print("=" * 70)
@@ -331,28 +333,30 @@ def start_server():
                 # Create content
                 user_content = Content(parts=[Part(text=message)])
                 
-                # Run agent with improved response extraction
+                # ===== START OF LOGIC FIX =====
+                # We continuously update response_text with the last-known text,
+                # whether from the agent's direct reply OR a tool's function_response.
                 response_text = ""
+                
                 async for event in runner.run_async(
                     user_id=user_id,
                     session_id=session.id,
                     new_message=user_content
                 ):
-                    if event.is_final_response():
-                        # Extract text from response, handling both direct responses and tool results
-                        if event.content and event.content.parts:
-                            text_parts = []
-                            for part in event.content.parts:
-                                if hasattr(part, 'text') and part.text:
-                                    text_parts.append(part.text)
-                            response_text = " ".join(text_parts).strip()
-                        
-                        # If still empty, try to extract from the event itself
-                        if not response_text and event.content:
-                            # Try to get string representation as last resort
-                            content_str = str(event.content)
-                            if content_str and content_str != "None":
-                                response_text = content_str
+                    if event.content and event.content.parts:
+                        for part in event.content.parts:
+                            if hasattr(part, 'text') and part.text:
+                                # This is a direct text response from the agent
+                                response_text = part.text.strip()
+                            
+                            if hasattr(part, 'function_response') and part.function_response:
+                                # This is the result from a tool call
+                                if (part.function_response.response and 
+                                    'result' in part.function_response.response and 
+                                    part.function_response.response['result']):
+                                    
+                                    response_text = part.function_response.response['result'].strip()
+                # ===== END OF LOGIC FIX =====
                 
                 print(f"\n✅ Response: {response_text[:100] if response_text else '(empty)'}...")
                 print("=" * 70)
