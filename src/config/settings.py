@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-001")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 DATABASE_URL = os.getenv("DATABASE_URL")
 APP_NAME = os.getenv("APP_NAME", "daily_standup_agent")
 TIMEZONE = os.getenv("TIMEZONE", "Africa/Lagos")

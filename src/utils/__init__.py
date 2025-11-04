@@ -1,6 +1,6 @@
 """
 Utility functions for Daily Standup Agent
-Helper functions for time windows, date parsing, and prompts
+Helper functions for time windows, date parsing, prompts, and A2A serialization
 """
 
 from .time_window import (
@@ -24,6 +24,15 @@ from .prompts import (
     get_validation_prompt
 )
 
+from .a2a_serializer import (
+    parse_telex_request,
+    build_a2a_response,
+    build_a2a_error_response,
+    extract_text_from_telex_message,
+    extract_context_id,
+    generate_daily_session_id
+)
+
 __all__ = [
     'get_current_wat_time',
     'is_within_window',
@@ -36,5 +45,11 @@ __all__ = [
     'get_extraction_prompt',
     'get_name_extraction_prompt',
     'get_summary_prompt',
-    'get_validation_prompt'
+    'get_validation_prompt',
+    'parse_telex_request',
+    'build_a2a_response',
+    'build_a2a_error_response',
+    'extract_text_from_telex_message',
+    'extract_context_id',
+    'generate_daily_session_id'
 ]

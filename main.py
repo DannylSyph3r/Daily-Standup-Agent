@@ -61,63 +61,6 @@ async def lifespan(app):
     print("=" * 70)
 
 
-def build_telex_response(
-    request_id: str,
-    context_id: str,
-    response_text: str,
-    message_id: str,
-    task_id: str,
-    history: List[Dict[str, Any]] = None
-) -> Dict[str, Any]:
-    """
-    Build a Telex-formatted JSON-RPC 2.0 response.
-    
-    Args:
-        request_id: The request ID from the incoming request
-        context_id: The context ID (conversation ID)
-        response_text: The agent's response text
-        message_id: Generated message ID for this response
-        task_id: Task ID for tracking
-        history: Conversation history
-        
-    Returns:
-        Telex-formatted JSON-RPC 2.0 response dict
-    """
-    if history is None:
-        history = []
-    
-    # Build assistant response message
-    assistant_message = {
-        "kind": "message",
-        "role": "assistant",
-        "parts": [
-            {
-                "kind": "text",
-                "text": response_text,
-                "data": None,
-                "file_url": None
-            }
-        ],
-        "messageId": message_id,
-        "taskId": task_id,
-        "metadata": None
-    }
-    
-    # Append to history
-    history.append(assistant_message)
-    
-    # Build Telex response
-    return {
-        "jsonrpc": "2.0",
-        "id": request_id,
-        "result": {
-            "task_id": task_id,
-            "context_id": context_id,
-            "history": history
-        }
-    }
-
-
 def start_server():
     """
     Start the FastAPI server with proper async initialization.
@@ -130,6 +73,11 @@ def start_server():
     from fastapi import FastAPI, Request
     from fastapi.responses import JSONResponse
     from google.genai.types import Content, Part
+    from src.utils.a2a_serializer import (
+        parse_telex_request,
+        build_a2a_response,
+        build_a2a_error_response
+    )
     
     print("\n" + "=" * 70)
     print("Starting Daily Standup Agent Server")
@@ -162,8 +110,7 @@ def start_server():
             "endpoints": {
                 "health": "/health",
                 "agent_info": "/info",
-                "chat": "/chat (simple testing)",
-                "telex": "/telex (Telex A2A integration)"
+                "chat": "/chat (unified endpoint - supports both simple and Telex A2A formats)"
             }
         })
     
@@ -180,250 +127,262 @@ def start_server():
             "capabilities": [
                 "Standup collection (9:30 AM - 12:30 PM WAT)",
                 "Team summary generation",
-                "Historical query support"
+                "Historical query support",
+                "Daily session management per user"
             ]
         })
     
     @app.post("/chat")
-    async def chat(request: dict):
+    async def chat(request: Request):
         """
-        Simple chat endpoint for testing with Postman.
+        Unified chat endpoint supporting both simple format and Telex A2A format.
         
-        Request body:
+        SIMPLE FORMAT (for Postman testing):
         {
             "message": "Your message here",
-            "session_id": "optional-session-id"  // If not provided, generates UUID
+            "session_id": "optional-session-id"
         }
         
-        Response:
-        {
-            "response": "Agent's response text",
-            "session_id": "session-id-used"
-        }
-        """
-        try:
-            message = request.get("message", "")
-            
-            # Get or generate session_id
-            session_id = request.get("session_id")
-            if not session_id:
-                session_id = f"chat-{str(uuid.uuid4())}"
-            
-            user_id = session_id
-            
-            if not message:
-                return JSONResponse(
-                    {"error": "Message is required"},
-                    status_code=400
-                )
-            
-            # Get or create session (get_session returns None if not found)
-            session = await session_service.get_session(
-                app_name=APP_NAME,
-                user_id=user_id,
-                session_id=session_id
-            )
-            
-            if session is None:
-                # Create new session if doesn't exist
-                session = await session_service.create_session(
-                    app_name=APP_NAME,
-                    user_id=user_id,
-                    session_id=session_id,
-                    state={}
-                )
-                print(f"✨ Created new session: {session_id}")
-            else:
-                print(f"📝 Retrieved existing session: {session_id}")
-            
-            # Create content
-            user_content = Content(parts=[Part(text=message)])
-            
-            # Run agent
-            response_text = ""
-            async for event in runner.run_async(
-                user_id=user_id,
-                session_id=session.id,
-                new_message=user_content
-            ):
-                if event.is_final_response():
-                    response_text = event.content.parts[0].text if event.content else ""
-            
-            return JSONResponse({
-                "response": response_text,
-                "session_id": session.id
-            })
-            
-        except Exception as e:
-            print(f"Error in chat endpoint: {e}")
-            import traceback
-            traceback.print_exc()
-            return JSONResponse(
-                {"error": str(e)},
-                status_code=500
-            )
-    
-    @app.post("/telex")
-    async def telex(request: Request):
-        """
-        Telex A2A webhook endpoint.
-        
-        Expected Telex JSON-RPC 2.0 request format:
+        TELEX A2A FORMAT (from Telex integration):
         {
             "jsonrpc": "2.0",
-            "method": "agent/sendMessage",
+            "id": "request-uuid",
+            "method": "message/send",
             "params": {
-                "contextId": "conversation-uuid",
                 "message": {
+                    "kind": "message",
                     "role": "user",
-                    "content": [{
-                        "type": "text",
-                        "text": "User's message"
-                    }]
-                },
-                "history": [...previous messages...]
-            },
-            "id": "request-uuid"
+                    "parts": [{"kind": "text", "text": "..."}],
+                    "metadata": {
+                        "telex_user_id": "...",
+                        "telex_channel_id": "...",
+                        ...
+                    }
+                }
+            }
         }
         
-        Returns Telex-formatted JSON-RPC 2.0 response
+        Response format adapts based on request format.
+        
+        SESSION MANAGEMENT (Telex):
+        Each user gets a daily session: {telex_user_id}-{DDMMYYYY}
+        Example: 019a4af5-87c9-7309-a8fb-9df58d1b917a-04112025
+        This allows the agent to maintain context for each user throughout the day.
         """
         try:
             body = await request.json()
             
-            # Extract request components
-            request_id = body.get("id", str(uuid.uuid4()))
-            method = body.get("method")
-            params = body.get("params", {})
+            # Detect request format
+            is_telex_format = "jsonrpc" in body and "method" in body
             
-            print("\n" + "=" * 70)
-            print(f"📬 Incoming Telex Request")
-            print(f"Method: {method}")
-            print(f"Request ID: {request_id}")
-            print("=" * 70)
-            
-            if method != "agent/sendMessage":
-                return JSONResponse({
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "error": {
-                        "code": -32601,
-                        "message": f"Method '{method}' not found"
-                    }
-                })
-            
-            # Extract message data
-            context_id = params.get("contextId")
-            message_data = params.get("message", {})
-            
-            # Extract text from message content
-            content = message_data.get("content", [])
-            message_text = ""
-            for content_item in content:
-                if content_item.get("type") == "text":
-                    message_text = content_item.get("text", "")
-                    break
-            
-            if not context_id or not message_text:
-                return JSONResponse({
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "error": {
-                        "code": -32602,
-                        "message": "Invalid params: contextId and message.content required"
-                    }
-                })
-            
-            print(f"Context ID: {context_id}")
-            print(f"Message: {message_text}")
-            print("=" * 70)
-            
-            # Use contextId as both session_id and user_id
-            session_id = context_id
-            user_id = context_id
-            
-            # Get or create session
-            session = await session_service.get_session(
-                app_name=APP_NAME,
-                user_id=user_id,
-                session_id=session_id
-            )
-            
-            if session is None:
-                session = await session_service.create_session(
+            if is_telex_format:
+                # ============================================================
+                # TELEX A2A FORMAT HANDLING
+                # ============================================================
+                print("\n" + "=" * 70)
+                print("📬 Incoming Telex A2A Request")
+                print("=" * 70)
+                
+                # Parse Telex request with flexible field extraction
+                parsed = parse_telex_request(body)
+                
+                request_id = parsed["request_id"]
+                method = parsed["method"]
+                message_text = parsed["message_text"]
+                context_id = parsed["context_id"]
+                session_id = parsed["session_id"]  # Daily session ID: {user_id}-{DDMMYYYY}
+                telex_user_id = parsed["telex_user_id"]
+                user_message_id = parsed["message_id"]
+                
+                print(f"Method: {method}")
+                print(f"Request ID: {request_id}")
+                print(f"Context ID: {context_id}")
+                print(f"Session ID: {session_id}")
+                print(f"Telex User ID: {telex_user_id}")
+                print(f"Message: {message_text}")
+                print("=" * 70)
+                
+                # Validate method (flexible - accepts variations)
+                if method and "message" not in method.lower() and "send" not in method.lower():
+                    return JSONResponse(
+                        build_a2a_error_response(
+                            request_id=request_id,
+                            error_code=-32601,
+                            error_message=f"Method '{method}' not supported"
+                        )
+                    )
+                
+                # Validate message
+                if not message_text:
+                    return JSONResponse(
+                        build_a2a_error_response(
+                            request_id=request_id,
+                            error_code=-32602,
+                            error_message="Invalid params: message text is required"
+                        )
+                    )
+                
+                # Use session_id (daily session per user)
+                user_id = session_id
+                
+                # Get or create session
+                session = await session_service.get_session(
                     app_name=APP_NAME,
                     user_id=user_id,
-                    session_id=session_id,
-                    state={}
+                    session_id=session_id
                 )
-                print(f"✨ Created new session: {session_id}")
+                
+                if session is None:
+                    session = await session_service.create_session(
+                        app_name=APP_NAME,
+                        user_id=user_id,
+                        session_id=session_id,
+                        state={}
+                    )
+                    print(f"✨ Created new daily session: {session_id}")
+                else:
+                    print(f"📝 Retrieved existing daily session: {session_id}")
+                
+                # Create content
+                user_content = Content(parts=[Part(text=message_text)])
+                
+                # Run agent with improved response extraction
+                response_text = ""
+                async for event in runner.run_async(
+                    user_id=user_id,
+                    session_id=session.id,
+                    new_message=user_content
+                ):
+                    if event.is_final_response():
+                        # Extract text from response, handling both direct responses and tool results
+                        if event.content and event.content.parts:
+                            text_parts = []
+                            for part in event.content.parts:
+                                if hasattr(part, 'text') and part.text:
+                                    text_parts.append(part.text)
+                            response_text = " ".join(text_parts).strip()
+                        
+                        # If still empty, try to extract from the event itself
+                        if not response_text and event.content:
+                            # Try to get string representation as last resort
+                            content_str = str(event.content)
+                            if content_str and content_str != "None":
+                                response_text = content_str
+                
+                print(f"\n✅ Response: {response_text[:100] if response_text else '(empty)'}...")
+                print("=" * 70)
+                
+                # Build A2A-compliant response with artifacts and history
+                a2a_response = build_a2a_response(
+                    request_id=request_id,
+                    context_id=context_id,
+                    response_text=response_text,
+                    user_message_text=message_text,
+                    user_message_id=user_message_id
+                )
+                
+                return JSONResponse(a2a_response)
+            
             else:
-                print(f"📝 Retrieved existing session: {session_id}")
-            
-            # Create content
-            user_content = Content(parts=[Part(text=message_text)])
-            
-            # Run agent
-            response_text = ""
-            async for event in runner.run_async(
-                user_id=user_id,
-                session_id=session.id,
-                new_message=user_content
-            ):
-                if event.is_final_response():
-                    response_text = event.content.parts[0].text if event.content else ""
-            
-            print(f"\nResponse: {response_text[:100]}...")
-            print("=" * 70)
-            
-            # Generate IDs for response
-            task_id = str(uuid.uuid4())
-            message_id = str(uuid.uuid4())
-            
-            # Build history (include user message and agent response)
-            history = [
-                {
-                    "kind": "message",
-                    "role": "user",
-                    "parts": [
-                        {
-                            "kind": "text",
-                            "text": message_text,
-                            "data": None,
-                            "file_url": None
-                        }
-                    ],
-                    "messageId": message_data.get("messageId", str(uuid.uuid4())),
-                    "taskId": None,
-                    "metadata": None
-                }
-            ]
-            
-            # Build Telex-formatted response
-            telex_response = build_telex_response(
-                request_id=request_id,
-                context_id=context_id,
-                response_text=response_text,
-                message_id=message_id,
-                task_id=task_id,
-                history=history
-            )
-            
-            return JSONResponse(telex_response)
+                # ============================================================
+                # SIMPLE FORMAT HANDLING (for Postman testing)
+                # ============================================================
+                print("\n" + "=" * 70)
+                print("📬 Incoming Simple Chat Request")
+                print("=" * 70)
+                
+                message = body.get("message", "")
+                
+                # Get or generate session_id
+                session_id = body.get("session_id")
+                if not session_id:
+                    session_id = f"chat-{str(uuid.uuid4())}"
+                
+                user_id = session_id
+                
+                if not message:
+                    return JSONResponse(
+                        {"error": "Message is required"},
+                        status_code=400
+                    )
+                
+                print(f"Session ID: {session_id}")
+                print(f"Message: {message}")
+                print("=" * 70)
+                
+                # Get or create session
+                session = await session_service.get_session(
+                    app_name=APP_NAME,
+                    user_id=user_id,
+                    session_id=session_id
+                )
+                
+                if session is None:
+                    session = await session_service.create_session(
+                        app_name=APP_NAME,
+                        user_id=user_id,
+                        session_id=session_id,
+                        state={}
+                    )
+                    print(f"✨ Created new session: {session_id}")
+                else:
+                    print(f"📝 Retrieved existing session: {session_id}")
+                
+                # Create content
+                user_content = Content(parts=[Part(text=message)])
+                
+                # Run agent with improved response extraction
+                response_text = ""
+                async for event in runner.run_async(
+                    user_id=user_id,
+                    session_id=session.id,
+                    new_message=user_content
+                ):
+                    if event.is_final_response():
+                        # Extract text from response, handling both direct responses and tool results
+                        if event.content and event.content.parts:
+                            text_parts = []
+                            for part in event.content.parts:
+                                if hasattr(part, 'text') and part.text:
+                                    text_parts.append(part.text)
+                            response_text = " ".join(text_parts).strip()
+                        
+                        # If still empty, try to extract from the event itself
+                        if not response_text and event.content:
+                            # Try to get string representation as last resort
+                            content_str = str(event.content)
+                            if content_str and content_str != "None":
+                                response_text = content_str
+                
+                print(f"\n✅ Response: {response_text[:100] if response_text else '(empty)'}...")
+                print("=" * 70)
+                
+                # Simple response format
+                return JSONResponse({
+                    "response": response_text,
+                    "session_id": session.id
+                })
             
         except Exception as e:
-            print(f"\n❌ Error in Telex endpoint: {e}")
+            print(f"\n❌ Error in chat endpoint: {e}")
             import traceback
             traceback.print_exc()
             
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": body.get("id", "unknown") if 'body' in locals() else "unknown",
-                "error": {
-                    "code": -32603,
-                    "message": f"Internal error: {str(e)}"
-                }
-            })
+            # Determine if we should return A2A error or simple error
+            if 'body' in locals() and isinstance(body, dict) and "jsonrpc" in body:
+                return JSONResponse(
+                    build_a2a_error_response(
+                        request_id=body.get("id", "unknown"),
+                        error_code=-32603,
+                        error_message=f"Internal error: {str(e)}"
+                    ),
+                    status_code=500
+                )
+            else:
+                return JSONResponse(
+                    {"error": str(e)},
+                    status_code=500
+                )
     
     print("Agent is now running!")
     print(f"Access the agent at: http://localhost:{A2A_PORT}")
@@ -431,11 +390,14 @@ def start_server():
     print(f"  GET  /         - Root info")
     print(f"  GET  /health   - Health check")
     print(f"  GET  /info     - Agent info")
-    print(f"  POST /chat     - Simple chat (for Postman testing)")
-    print(f"  POST /telex    - Telex A2A webhook (for production)")
+    print(f"  POST /chat     - Unified endpoint (Simple + Telex A2A)")
+    print(f"\nSupported Formats:")
+    print(f"  Simple:  {{'message': '...', 'session_id': '...'}}")
+    print(f"  Telex:   {{'jsonrpc': '2.0', 'method': '...', 'params': {{...}}}}")
     print(f"\nSession Management:")
-    print(f"  /chat  - Uses 'session_id' from request or generates UUID")
-    print(f"  /telex - Uses Telex's 'contextId' as session_id")
+    print(f"  Simple format - Uses 'session_id' from request or generates UUID")
+    print(f"  Telex format  - Daily sessions per user: {{user_id}}-{{DDMMYYYY}}")
+    print(f"                  Example: 019a4af5-87c9-7309-a8fb-9df58d1b917a-04112025")
     print(f"  Sessions stored in PostgreSQL (survives restarts!)")
     print()
     print("Press CTRL+C to stop the server")
