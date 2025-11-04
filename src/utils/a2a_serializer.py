@@ -226,33 +226,30 @@ def build_a2a_response(
     agent_message_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Build A2A-compliant JSON-RPC 2.0 response (FIXED: Simple Message structure).
-    
-    This function generates the simplified "Message" structure
-    expected by the Telex endpoint, placing it directly in the 'result' field.
-    
-    This corrected version now includes the 'contextId' in the top-level
-    Message object, as it is passed by main.py and likely required
-    by the receiving system for context.
+    Build A2A-compliant JSON-RPC 2.0 response with artifacts and history.
     
     Args:
         request_id: Original request ID from Telex
         context_id: Context/session identifier
         response_text: Agent's response text
-        user_message_text: Original user message (retained, not used)
-        user_message_id: User's message ID (retained, not used)
+        user_message_text: Original user message (for history)
+        user_message_id: User's message ID (for history)
         task_id: Optional task ID (generated if not provided)
         agent_message_id: Optional agent message ID (generated if not provided)
         
     Returns:
-        A2A-compliant response dictionary (Message structure)
+        A2A-compliant response dictionary with artifacts and history populated
     """
     if not task_id:
-        # We still need a task_id for the message's 'taskId' field
         task_id = f"task-{str(uuid.uuid4())}"
     
     if not agent_message_id:
         agent_message_id = f"msg-{str(uuid.uuid4())}"
+    
+    if not user_message_id:
+        user_message_id = f"msg-{str(uuid.uuid4())}"
+    
+    timestamp = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
     
     # Build parts structure for response
     response_part = {
@@ -262,22 +259,58 @@ def build_a2a_response(
         "file_url": None
     }
     
-    # Build the "Message" object (this is the new 'result')
-    message_object = {
-        "messageId": agent_message_id,
-        "role": "agent",
-        "parts": [response_part],
-        "kind": "message",
-        "taskId": task_id,
-        "metadata": None,
-        "contextId": context_id  # This is the fix to include the contextId
-    }
-    
-    # Return the final JSON-RPC wrapper
     return {
         "jsonrpc": "2.0",
         "id": request_id,
-        "result": message_object,  # The 'result' is now the message object
+        "result": {
+            "id": task_id,
+            "contextId": context_id,
+            "status": {
+                "state": "completed",
+                "timestamp": timestamp,
+                "message": {
+                    "messageId": agent_message_id,
+                    "role": "agent",
+                    "parts": [response_part],
+                    "kind": "message",
+                    "taskId": task_id,
+                    "metadata": None
+                }
+            },
+            "artifacts": [
+                {
+                    "artifactId": f"artifact-{str(uuid.uuid4())}",
+                    "name": "StandupAgentResponse",
+                    "parts": [response_part]
+                }
+            ],
+            "history": [
+                {
+                    "kind": "message",
+                    "role": "user",
+                    "parts": [
+                        {
+                            "kind": "text",
+                            "text": user_message_text,
+                            "data": None,
+                            "file_url": None
+                        }
+                    ],
+                    "messageId": user_message_id,
+                    "taskId": None,
+                    "metadata": None
+                },
+                {
+                    "kind": "message",
+                    "role": "agent",
+                    "parts": [response_part],
+                    "messageId": agent_message_id,
+                    "taskId": task_id,
+                    "metadata": None
+                }
+            ],
+            "kind": "task"
+        },
         "error": None
     }
 
