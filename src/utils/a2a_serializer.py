@@ -3,6 +3,7 @@ A2A (Agent-to-Agent) Protocol Serializer
 Handles Telex JSON-RPC 2.0 request/response formatting with flexible parsing
 """
 import uuid
+import re
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
@@ -27,16 +28,27 @@ def generate_daily_session_id(telex_user_id: str) -> str:
     return f"{telex_user_id}-{today}"
 
 
+def _clean_html(raw_html: str) -> str:
+    """Simple HTML tag and entity stripper."""
+    if not raw_html:
+        return ""
+    # Remove <p>, </p>, <br /> etc.
+    cleanr = re.compile('<.*?>')
+    cleantext = re.sub(cleanr, '', raw_html)
+    # Replace &nbsp; with a space
+    cleantext = cleantext.replace("&nbsp;", " ").strip()
+    return cleantext
+
+
 def extract_text_from_telex_message(message: Dict[str, Any]) -> str:
     """
     Extract text from Telex message structure with multiple fallback strategies.
     
     Telex can send messages in various formats. This function tries multiple
     locations to find the actual user text:
-    1. Direct text in first part
-    2. Content field with text
-    3. Data arrays with conversation history
-    4. Any text field anywhere in the structure
+    1. Prioritize the last text item from the `kind: "data"` part (history)
+    2. Fallback to the first `kind: "text"` part
+    3. Fallback to other legacy/deep search methods
     
     Args:
         message: Telex message object (can vary in structure)
@@ -47,37 +59,39 @@ def extract_text_from_telex_message(message: Dict[str, Any]) -> str:
     if not message:
         return ""
     
-    # Strategy 1: Check for direct 'text' field at message level
-    if "text" in message and isinstance(message["text"], str):
-        text = message["text"].strip()
-        if text:
-            return text
-    
-    # Strategy 2: Check parts array
+    # Strategy 1: Check parts array (Prioritizing history block)
     parts = message.get("parts", [])
     if parts and isinstance(parts, list):
-        for part in parts:
-            if not isinstance(part, dict):
-                continue
-            
-            # Check for direct text in part
-            if part.get("kind") == "text" and "text" in part:
-                text = part.get("text", "").strip()
-                # Filter out HTML tags if present
-                if text and not text.startswith("<"):
-                    return text
-            
-            # Check for text in nested data
-            if part.get("kind") == "data" and "data" in part:
-                data_array = part.get("data", [])
-                if isinstance(data_array, list):
-                    # Get the last text item (most recent user message)
-                    for data_item in reversed(data_array):
-                        if isinstance(data_item, dict) and data_item.get("kind") == "text":
-                            text = data_item.get("text", "").strip()
-                            # Prefer non-HTML text
-                            if text and not text.startswith("<"):
-                                return text
+        
+        # First, search for the 'data' part, which contains history
+        data_part = next((p for p in parts if p.get("kind") == "data" and p.get("data")), None)
+        
+        if data_part:
+            data_array = data_part.get("data", [])
+            if isinstance(data_array, list):
+                # Get the last (latest) text item from the history
+                for data_item in reversed(data_array):
+                    if (isinstance(data_item, dict) and 
+                        data_item.get("kind") == "text" and
+                        data_item.get("text") is not None):
+                        
+                        text = _clean_html(data_item.get("text", ""))
+                        if text:
+                            return text
+                            
+        # If no 'data' part (or no text in it), fallback to first 'text' part
+        # This handles simple messages that don't contain a history block.
+        text_part = next((p for p in parts if p.get("kind") == "text" and p.get("text")), None)
+        if text_part:
+            text = _clean_html(text_part.get("text", ""))
+            if text:
+                return text
+
+    # Strategy 2: Check for direct 'text' field at message level
+    if "text" in message and isinstance(message["text"], str):
+        text = _clean_html(message["text"]).strip()
+        if text:
+            return text
     
     # Strategy 3: Check content array (alternative structure)
     content = message.get("content", [])
@@ -85,7 +99,7 @@ def extract_text_from_telex_message(message: Dict[str, Any]) -> str:
         for item in content:
             if isinstance(item, dict):
                 if item.get("type") == "text" and "text" in item:
-                    text = item.get("text", "").strip()
+                    text = _clean_html(item.get("text", "")).strip()
                     if text:
                         return text
     
@@ -93,8 +107,8 @@ def extract_text_from_telex_message(message: Dict[str, Any]) -> str:
     def find_text_recursive(obj):
         if isinstance(obj, dict):
             if "text" in obj and isinstance(obj["text"], str):
-                text = obj["text"].strip()
-                if text and not text.startswith("<"):
+                text = _clean_html(obj["text"]).strip()
+                if text:
                     return text
             for value in obj.values():
                 result = find_text_recursive(value)
@@ -175,7 +189,7 @@ def parse_telex_request(body: Dict[str, Any]) -> Dict[str, Any]:
     message_id = message_obj.get("messageId") or message_obj.get("message_id") or str(uuid.uuid4())
     metadata = message_obj.get("metadata", {})
     
-    # Extract text with flexible parsing
+    # Extract text with flexible, history-aware parsing
     text = extract_text_from_telex_message(message_obj)
     
     # Extract context ID from multiple possible locations
