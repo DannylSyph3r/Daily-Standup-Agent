@@ -108,12 +108,42 @@ def start_server():
             "status": "running",
             "description": "AI-powered daily standup coordinator",
             "endpoints": {
+                "agent_card": "/.well-known/agent.json", # === CHANGE 2 (Documentation) ===
                 "health": "/health",
                 "agent_info": "/info",
-                "chat": "/chat (unified endpoint - supports both simple and Telex A2A formats)"
+                "chat": "/ (POST)" # === CHANGE 2 (Documentation) ===
             }
         })
-    
+
+    # === CHANGE 1: ADD .WELL-KNOWN/AGENT.JSON ENDPOINT ===
+    @app.get("/.well-known/agent.json")
+    async def get_agent_card():
+        """
+        Return the agent card for Telex integration.
+        """
+        return JSONResponse({
+            "name": standup_agent.name,
+            "description": standup_agent.description,
+            "url": "/",  # Per request, POST endpoint is at the base URL
+            "healthCheck": "/health",
+            "capabilities": [
+                {
+                    "name": "Standup Collection",
+                    "description": "Collects daily standup updates during a specific time window."
+                },
+                {
+                    "name": "Team Summary",
+                    "description": "Generates AI-powered team summaries on demand."
+                }
+            ],
+            "metadata": {
+                "model": standup_agent.model,
+                "timezone": "Africa/Lagos",
+                "submission_window": "9:30 AM - 12:30 PM WAT"
+            }
+        })
+    # === END OF CHANGE 1 ===
+
     @app.get("/health")
     async def health():
         return JSONResponse({"status": "healthy"})
@@ -132,10 +162,14 @@ def start_server():
             ]
         })
     
-    @app.post("/chat")
-    async def chat(request: Request):
+    # === CHANGE 2: MOVE /chat ENDPOINT TO / (POST) ===
+    @app.post("/")
+    async def handle_rpc(request: Request):
         """
-        Unified chat endpoint supporting both simple format and Telex A2A format.
+        Unified JSON-RPC endpoint supporting Telex A2A format
+        and simple format for testing.
+        
+        This is the main communication endpoint.
         
         SIMPLE FORMAT (for Postman testing):
         {
@@ -143,31 +177,23 @@ def start_server():
             "session_id": "optional-session-id"
         }
         
-        TELEX A2A FORMAT (from Telex integration):
+        TELEX A2A FORMAT (JSON-RPC):
         {
             "jsonrpc": "2.0",
             "id": "request-uuid",
-            "method": "message/send",
+            "method": "message/send", // This routes the request
             "params": {
                 "message": {
                     "kind": "message",
                     "role": "user",
                     "parts": [{"kind": "text", "text": "..."}],
-                    "metadata": {
-                        "telex_user_id": "...",
-                        "telex_channel_id": "...",
-                        ...
-                    }
+                    "metadata": { ... }
                 }
             }
         }
         
-        Response format adapts based on request format.
-        
         SESSION MANAGEMENT (Telex):
         Each user gets a daily session: {telex_user_id}-{DDMMYYYY}
-        Example: 019a4af5-87c9-7309-a8fb-9df58d1b917a-04112025
-        This allows the agent to maintain context for each user throughout the day.
         """
         try:
             body = await request.json()
@@ -177,10 +203,10 @@ def start_server():
             
             if is_telex_format:
                 # ============================================================
-                # TELEX A2A FORMAT HANDLING
+                # TELEX A2A FORMAT HANDLING (JSON-RPC)
                 # ============================================================
                 print("\n" + "=" * 70)
-                print("📬 Incoming Telex A2A Request")
+                print("📬 Incoming Telex A2A Request (JSON-RPC)")
                 print("=" * 70)
                 
                 # Parse Telex request with flexible field extraction
@@ -202,8 +228,84 @@ def start_server():
                 print(f"Message: {message_text}")
                 print("=" * 70)
                 
-                # Validate method (flexible - accepts variations)
-                if method and "message" not in method.lower() and "send" not in method.lower():
+                # === ROUTING BASED ON METHOD ===
+                # This is where you would route different RPC methods.
+                # For this agent, we only support "message/send" (or similar).
+                
+                if method and ("message" in method.lower() or "send" in method.lower()):
+                    # This is a message to be processed by the agent
+                    
+                    # Validate message
+                    if not message_text:
+                        return JSONResponse(
+                            build_a2a_error_response(
+                                request_id=request_id,
+                                error_code=-32602,
+                                error_message="Invalid params: message text is required"
+                            )
+                        )
+                    
+                    # Use session_id (daily session per user)
+                    user_id = session_id
+                    
+                    # Get or create session
+                    session = await session_service.get_session(
+                        app_name=APP_NAME,
+                        user_id=user_id,
+                        session_id=session_id
+                    )
+                    
+                    if session is None:
+                        session = await session_service.create_session(
+                            app_name=APP_NAME,
+                            user_id=user_id,
+                            session_id=session_id,
+                            state={}
+                        )
+                        print(f"✨ Created new daily session: {session_id}")
+                    else:
+                        print(f"📝 Retrieved existing daily session: {session_id}")
+                    
+                    # Create content
+                    user_content = Content(parts=[Part(text=message_text)])
+                    
+                    # ===== START OF LOGIC FIX =====
+                    response_text = ""
+                    
+                    async for event in runner.run_async(
+                        user_id=user_id,
+                        session_id=session.id,
+                        new_message=user_content
+                    ):
+                        if event.content and event.content.parts:
+                            for part in event.content.parts:
+                                if hasattr(part, 'text') and part.text:
+                                    response_text = part.text.strip()
+                                
+                                if hasattr(part, 'function_response') and part.function_response:
+                                    if (part.function_response.response and 
+                                        'result' in part.function_response.response and 
+                                        part.function_response.response['result']):
+                                        
+                                        response_text = part.function_response.response['result'].strip()
+                    # ===== END OF LOGIC FIX =====
+                    
+                    print(f"\n✅ Response: {response_text[:100] if response_text else '(empty)'}...")
+                    print("=" * 70)
+                    
+                    # Build A2A-compliant response
+                    a2a_response = build_a2a_response(
+                        request_id=request_id,
+                        context_id=context_id,
+                        response_text=response_text,
+                        user_message_text=message_text,
+                        user_message_id=user_message_id
+                    )
+                    
+                    return JSONResponse(a2a_response)
+                
+                else:
+                    # Method not supported
                     return JSONResponse(
                         build_a2a_error_response(
                             request_id=request_id,
@@ -212,85 +314,12 @@ def start_server():
                         )
                     )
                 
-                # Validate message
-                if not message_text:
-                    return JSONResponse(
-                        build_a2a_error_response(
-                            request_id=request_id,
-                            error_code=-32602,
-                            error_message="Invalid params: message text is required"
-                        )
-                    )
-                
-                # Use session_id (daily session per user)
-                user_id = session_id
-                
-                # Get or create session
-                session = await session_service.get_session(
-                    app_name=APP_NAME,
-                    user_id=user_id,
-                    session_id=session_id
-                )
-                
-                if session is None:
-                    session = await session_service.create_session(
-                        app_name=APP_NAME,
-                        user_id=user_id,
-                        session_id=session_id,
-                        state={}
-                    )
-                    print(f"✨ Created new daily session: {session_id}")
-                else:
-                    print(f"📝 Retrieved existing daily session: {session_id}")
-                
-                # Create content
-                user_content = Content(parts=[Part(text=message_text)])
-                
-                # ===== START OF LOGIC FIX =====
-                # We continuously update response_text with the last-known text,
-                # whether from the agent's direct reply OR a tool's function_response.
-                response_text = ""
-                
-                async for event in runner.run_async(
-                    user_id=user_id,
-                    session_id=session.id,
-                    new_message=user_content
-                ):
-                    if event.content and event.content.parts:
-                        for part in event.content.parts:
-                            if hasattr(part, 'text') and part.text:
-                                # This is a direct text response from the agent
-                                response_text = part.text.strip()
-                            
-                            if hasattr(part, 'function_response') and part.function_response:
-                                # This is the result from a tool call
-                                if (part.function_response.response and 
-                                    'result' in part.function_response.response and 
-                                    part.function_response.response['result']):
-                                    
-                                    response_text = part.function_response.response['result'].strip()
-                # ===== END OF LOGIC FIX =====
-                
-                print(f"\n✅ Response: {response_text[:100] if response_text else '(empty)'}...")
-                print("=" * 70)
-                
-                # Build A2A-compliant response with artifacts and history
-                a2a_response = build_a2a_response(
-                    request_id=request_id,
-                    context_id=context_id,
-                    response_text=response_text,
-                    user_message_text=message_text,
-                    user_message_id=user_message_id
-                )
-                
-                return JSONResponse(a2a_response)
-            
             else:
                 # ============================================================
                 # SIMPLE FORMAT HANDLING (for Postman testing)
                 # ============================================================
                 print("\n" + "=" * 70)
-                print("📬 Incoming Simple Chat Request")
+                print("📬 Incoming Simple Chat Request (Non-JSON-RPC)")
                 print("=" * 70)
                 
                 message = body.get("message", "")
@@ -334,8 +363,6 @@ def start_server():
                 user_content = Content(parts=[Part(text=message)])
                 
                 # ===== START OF LOGIC FIX =====
-                # We continuously update response_text with the last-known text,
-                # whether from the agent's direct reply OR a tool's function_response.
                 response_text = ""
                 
                 async for event in runner.run_async(
@@ -346,11 +373,9 @@ def start_server():
                     if event.content and event.content.parts:
                         for part in event.content.parts:
                             if hasattr(part, 'text') and part.text:
-                                # This is a direct text response from the agent
                                 response_text = part.text.strip()
                             
                             if hasattr(part, 'function_response') and part.function_response:
-                                # This is the result from a tool call
                                 if (part.function_response.response and 
                                     'result' in part.function_response.response and 
                                     part.function_response.response['result']):
@@ -387,17 +412,21 @@ def start_server():
                     {"error": str(e)},
                     status_code=500
                 )
-    
+    # === END OF CHANGE 2 ===
+
     print("Agent is now running!")
     print(f"Access the agent at: http://localhost:{A2A_PORT}")
     print(f"\nEndpoints:")
     print(f"  GET  /         - Root info")
     print(f"  GET  /health   - Health check")
     print(f"  GET  /info     - Agent info")
-    print(f"  POST /chat     - Unified endpoint (Simple + Telex A2A)")
+    # === CHANGE 2 (Documentation) ===
+    print(f"  GET  /.well-known/agent.json - Telex Agent Card")
+    print(f"  POST /         - Unified endpoint (JSON-RPC + Simple)")
+    # === END OF CHANGE ===
     print(f"\nSupported Formats:")
     print(f"  Simple:  {{'message': '...', 'session_id': '...'}}")
-    print(f"  Telex:   {{'jsonrpc': '2.0', 'method': '...', 'params': {{...}}}}")
+    print(f"  Telex:   {{'jsonrpc': '2.0', 'method': 'message/send', 'params': {{...}}}}")
     print(f"\nSession Management:")
     print(f"  Simple format - Uses 'session_id' from request or generates UUID")
     print(f"  Telex format  - Daily sessions per user: {{user_id}}-{{DDMMYYYY}}")
