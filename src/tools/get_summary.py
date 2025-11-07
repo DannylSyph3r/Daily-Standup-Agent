@@ -1,6 +1,4 @@
-"""
-Handles on-demand summary generation with smart caching
-"""
+""" Handles on-demand summary generation with smart caching """
 
 import json
 from datetime import date

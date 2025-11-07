@@ -1,7 +1,4 @@
-"""
-Utility functions for Daily Standup Agent
-Helper functions for time windows, date parsing, prompts, and A2A serialization
-"""
+""" Utility functions for Daily Standup Agent """
 
 from .time_window import (
     get_current_wat_time,

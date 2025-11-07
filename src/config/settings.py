@@ -1,7 +1,4 @@
-"""
-Configuration settings for Daily Standup Agent
-All environment-based configuration in one place
-"""
+""" Configuration settings for Daily Standup Agent """
 import os
 from datetime import time
 from dotenv import load_dotenv

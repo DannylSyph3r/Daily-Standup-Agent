@@ -1,7 +1,5 @@
-"""
-Time Window Logic for Daily Standup Agent
-Handles WAT timezone and submission window validation
-"""
+""" Time Window Logic for Daily Standup Agent. Handles WAT timezone and submission window validation"""
+
 from datetime import datetime, time
 import pytz
 from src.config import TIMEZONE, WINDOW_START, WINDOW_END

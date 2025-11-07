@@ -1,7 +1,4 @@
-"""
-A2A (Agent-to-Agent) Protocol Serializer
-Handles Telex JSON-RPC 2.0 request/response formatting with flexible parsing
-"""
+""" A2A (Agent-to-Agent) Protocol Serializer. Handles Telex JSON-RPC 2.0 request/response formatting with flexible parsing """
 import uuid
 import re
 from datetime import datetime
@@ -59,7 +56,7 @@ def extract_text_from_telex_message(message: Dict[str, Any]) -> str:
     if not message:
         return ""
     
-    # Strategy 1: Check parts array (Prioritizing history block)
+    # Check parts array (Prioritizing history block)
     parts = message.get("parts", [])
     if parts and isinstance(parts, list):
         
@@ -69,7 +66,7 @@ def extract_text_from_telex_message(message: Dict[str, Any]) -> str:
         if data_part:
             data_array = data_part.get("data", [])
             if isinstance(data_array, list):
-                # Get the last (latest) text item from the history
+                # Get the latest text item from the history
                 for data_item in reversed(data_array):
                     if (isinstance(data_item, dict) and 
                         data_item.get("kind") == "text" and
@@ -87,13 +84,13 @@ def extract_text_from_telex_message(message: Dict[str, Any]) -> str:
             if text:
                 return text
 
-    # Strategy 2: Check for direct 'text' field at message level
+    # Check for direct 'text' field at message level
     if "text" in message and isinstance(message["text"], str):
         text = _clean_html(message["text"]).strip()
         if text:
             return text
     
-    # Strategy 3: Check content array (alternative structure)
+    # Check content array (alternative structure)
     content = message.get("content", [])
     if content and isinstance(content, list):
         for item in content:
@@ -103,7 +100,7 @@ def extract_text_from_telex_message(message: Dict[str, Any]) -> str:
                     if text:
                         return text
     
-    # Strategy 4: Deep search for any 'text' field
+    # Deep search for any 'text' field
     def find_text_recursive(obj):
         if isinstance(obj, dict):
             if "text" in obj and isinstance(obj["text"], str):
@@ -223,7 +220,7 @@ def parse_telex_request(body: Dict[str, Any]) -> Dict[str, Any]:
         "message_text": text,
         "message_id": message_id,
         "context_id": context_id,
-        "session_id": session_id,  # Daily session ID for user (with fallbacks)
+        "session_id": session_id,  # Daily session ID for user
         "telex_user_id": telex_user_id,
         "metadata": metadata,
         "configuration": params.get("configuration", {})

@@ -1,6 +1,4 @@
-"""
-Database Operations for Daily Standup Agent
-"""
+""" Database Operations for Daily Standup Agent """
 from datetime import date, datetime
 from typing import Optional, List, Dict, Any
 from src.database.connection import execute_query, fetch_one, fetch_all, fetch_value

@@ -19,14 +19,14 @@ async def lifespan(app):
     FastAPI lifespan event handler.
     Properly initializes and cleans up resources within FastAPI's event loop.
     """
-    # ===== STARTUP =====
+    # STARTUP
     print("\n" + "=" * 70)
     print("Daily Standup Agent - Initialization")
     print("=" * 70)
     
     # Check environment
     if not check_environment():
-        print("\n⚠️  Environment check failed!")
+        print("\n Environment check failed!")
         print("Please fix the configuration issues before starting the agent.")
         sys.exit(1)
     
@@ -49,7 +49,7 @@ async def lifespan(app):
     
     yield
     
-    # ===== SHUTDOWN =====
+    # SHUTDOWN
     print("\n" + "=" * 70)
     print("Shutting down Daily Standup Agent...")
     print("=" * 70)
@@ -108,14 +108,13 @@ def start_server():
             "status": "running",
             "description": "AI-powered daily standup coordinator",
             "endpoints": {
-                "agent_card": "/.well-known/agent.json", # === CHANGE 2 (Documentation) ===
+                "agent_card": "/.well-known/agent.json",
                 "health": "/health",
                 "agent_info": "/info",
-                "chat": "/ (POST)" # === CHANGE 2 (Documentation) ===
+                "chat": "/ (POST)"
             }
         })
 
-    # === CHANGE 1: ADD .WELL-KNOWN/AGENT.JSON ENDPOINT ===
     @app.get("/.well-known/agent.json")
     async def get_agent_card():
         """
@@ -124,7 +123,7 @@ def start_server():
         return JSONResponse({
             "name": standup_agent.name,
             "description": standup_agent.description,
-            "url": "/",  # Per request, POST endpoint is at the base URL
+            "url": "/",
             "healthCheck": "/health",
             "capabilities": [
                 {
@@ -142,7 +141,6 @@ def start_server():
                 "submission_window": "9:30 AM - 12:30 PM WAT"
             }
         })
-    # === END OF CHANGE 1 ===
 
     @app.get("/health")
     async def health():
@@ -162,7 +160,6 @@ def start_server():
             ]
         })
     
-    # === CHANGE 2: MOVE /chat ENDPOINT TO / (POST) ===
     @app.post("/")
     async def handle_rpc(request: Request):
         """
@@ -202,9 +199,7 @@ def start_server():
             is_telex_format = "jsonrpc" in body and "method" in body
             
             if is_telex_format:
-                # ============================================================
-                # TELEX A2A FORMAT HANDLING (JSON-RPC)
-                # ============================================================
+                
                 print("\n" + "=" * 70)
                 print("📬 Incoming Telex A2A Request (JSON-RPC)")
                 print("=" * 70)
@@ -216,7 +211,7 @@ def start_server():
                 method = parsed["method"]
                 message_text = parsed["message_text"]
                 context_id = parsed["context_id"]
-                session_id = parsed["session_id"]  # Daily session ID: {user_id}-{DDMMYYYY}
+                session_id = parsed["session_id"]
                 telex_user_id = parsed["telex_user_id"]
                 user_message_id = parsed["message_id"]
                 
@@ -228,10 +223,7 @@ def start_server():
                 print(f"Message: {message_text}")
                 print("=" * 70)
                 
-                # === ROUTING BASED ON METHOD ===
-                # This is where you would route different RPC methods.
-                # For this agent, we only support "message/send" (or similar).
-                
+                # ROUTING BASED ON METHOD     
                 if method and ("message" in method.lower() or "send" in method.lower()):
                     # This is a message to be processed by the agent
                     
@@ -269,7 +261,6 @@ def start_server():
                     # Create content
                     user_content = Content(parts=[Part(text=message_text)])
                     
-                    # ===== START OF LOGIC FIX =====
                     response_text = ""
                     
                     async for event in runner.run_async(
@@ -288,7 +279,6 @@ def start_server():
                                         part.function_response.response['result']):
                                         
                                         response_text = part.function_response.response['result'].strip()
-                    # ===== END OF LOGIC FIX =====
                     
                     print(f"\n✅ Response: {response_text[:100] if response_text else '(empty)'}...")
                     print("=" * 70)
@@ -315,9 +305,7 @@ def start_server():
                     )
                 
             else:
-                # ============================================================
-                # SIMPLE FORMAT HANDLING (for Postman testing)
-                # ============================================================
+                
                 print("\n" + "=" * 70)
                 print("📬 Incoming Simple Chat Request (Non-JSON-RPC)")
                 print("=" * 70)
@@ -361,8 +349,7 @@ def start_server():
                 
                 # Create content
                 user_content = Content(parts=[Part(text=message)])
-                
-                # ===== START OF LOGIC FIX =====
+
                 response_text = ""
                 
                 async for event in runner.run_async(
@@ -381,12 +368,10 @@ def start_server():
                                     part.function_response.response['result']):
                                     
                                     response_text = part.function_response.response['result'].strip()
-                # ===== END OF LOGIC FIX =====
                 
                 print(f"\n✅ Response: {response_text[:100] if response_text else '(empty)'}...")
                 print("=" * 70)
                 
-                # Simple response format
                 return JSONResponse({
                     "response": response_text,
                     "session_id": session.id
@@ -412,7 +397,6 @@ def start_server():
                     {"error": str(e)},
                     status_code=500
                 )
-    # === END OF CHANGE 2 ===
 
     print("Agent is now running!")
     print(f"Access the agent at: http://localhost:{A2A_PORT}")
@@ -420,10 +404,8 @@ def start_server():
     print(f"  GET  /         - Root info")
     print(f"  GET  /health   - Health check")
     print(f"  GET  /info     - Agent info")
-    # === CHANGE 2 (Documentation) ===
     print(f"  GET  /.well-known/agent.json - Telex Agent Card")
     print(f"  POST /         - Unified endpoint (JSON-RPC + Simple)")
-    # === END OF CHANGE ===
     print(f"\nSupported Formats:")
     print(f"  Simple:  {{'message': '...', 'session_id': '...'}}")
     print(f"  Telex:   {{'jsonrpc': '2.0', 'method': 'message/send', 'params': {{...}}}}")

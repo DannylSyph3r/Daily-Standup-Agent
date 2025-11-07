@@ -1,7 +1,5 @@
-"""
-Date Parsing Utilities for Daily Standup Agent
-Handles parsing of natural language date queries
-"""
+""" Date Parsing Utilities for Daily Standup Agent. Handles parsing of natural language date queries"""
+
 from datetime import datetime, date, timedelta
 import re
 import pytz

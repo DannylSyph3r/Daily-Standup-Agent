@@ -1,6 +1,4 @@
-"""
-Environment validation for Daily Standup Agent. Checks all required dependencies and configurations
-"""
+""" Environment validation for Daily Standup Agent. Checks all required dependencies and configurations """
 
 import sys
 from src.config.settings import validate_config
@@ -65,7 +63,7 @@ def check_environment() -> bool:
 
 if __name__ == "__main__":
     if not check_environment():
-        print("\n⚠️  Environment check failed!")
+        print("\n Environment check failed!")
         print("Please fix the issues above before running the agent.")
         sys.exit(1)
     else:

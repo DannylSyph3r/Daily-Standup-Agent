@@ -1,6 +1,5 @@
-"""
-Handles standup submission with conversational name extraction
-"""
+""" Handles standup submission with conversational name extraction """
+
 import json
 from datetime import date
 from google.genai import types
@@ -48,8 +47,7 @@ async def submit_standup(
     asked_for_name = tool_context.state.get("asked_for_name", False)
     
     if asked_for_name and pending_standup:
-        # This is a follow-up message where user is providing their name
-        # Extract name from current message
+        # This is a follow-up message where user is providing their name. Extract name from current message
         name_prompt = get_name_extraction_prompt(message)
         
         try:
@@ -84,7 +82,6 @@ async def submit_standup(
             return "I had trouble understanding your name. Please tell me your name clearly."
     else:
         # This is either a first message or a regular standup submission
-        # Extract structured data from message
         extraction_prompt = get_extraction_prompt(message)
         
         try:
