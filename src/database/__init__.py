@@ -19,7 +19,8 @@ from .operations import (
     get_daily_reports,
     get_cached_summary,
     cache_summary,
-    get_report_count_for_date
+    get_report_count_for_date,
+    get_reports_by_users_and_date_range
 )
 
 __all__ = [
@@ -35,5 +36,6 @@ __all__ = [
     'get_daily_reports',
     'get_cached_summary',
     'cache_summary',
-    'get_report_count_for_date'
+    'get_report_count_for_date',
+    'get_reports_by_users_and_date_range'
 ]

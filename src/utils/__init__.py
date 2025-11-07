@@ -11,14 +11,17 @@ from .time_window import (
 from .date_parser import (
     get_today_wat,
     parse_date_query,
-    format_date_friendly
+    format_date_friendly,
+    parse_date_range_query,
+    format_date_range_friendly
 )
 
 from .prompts import (
     get_extraction_prompt,
     get_name_extraction_prompt,
     get_summary_prompt,
-    get_validation_prompt
+    get_validation_prompt,
+    get_user_names_extraction_prompt
 )
 
 from .a2a_serializer import (
@@ -39,10 +42,13 @@ __all__ = [
     'get_today_wat',
     'parse_date_query',
     'format_date_friendly',
+    'parse_date_range_query',
+    'format_date_range_friendly',
     'get_extraction_prompt',
     'get_name_extraction_prompt',
     'get_summary_prompt',
     'get_validation_prompt',
+    'get_user_names_extraction_prompt',
     'parse_telex_request',
     'build_a2a_response',
     'build_a2a_error_response',

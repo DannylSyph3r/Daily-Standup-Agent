@@ -1,5 +1,6 @@
 """ Database Operations for Daily Standup Agent """
-from datetime import date, datetime
+
+from datetime import date, datetime, timedelta
 from typing import Optional, List, Dict, Any
 from src.database.connection import execute_query, fetch_one, fetch_all, fetch_value
 
@@ -107,6 +108,76 @@ async def get_daily_reports(report_date: date) -> List[Dict[str, Any]]:
     
     reports = await fetch_all(query, report_date)
     return reports
+
+
+async def get_reports_by_users_and_date_range(
+    user_names: List[str],
+    start_date: date,
+    end_date: date
+) -> Dict[date, Dict[str, Optional[Dict[str, Any]]]]:
+    """
+    Get standup reports for specific users within a date range.
+    
+    Returns a nested dictionary structure:
+    {
+        date1: {
+            "user1": {report_data} or None,
+            "user2": {report_data} or None,
+        },
+        date2: {
+            "user1": {report_data} or None,
+            "user2": {report_data} or None,
+        }
+    }
+    
+    Args:
+        user_names: List of user names to fetch reports for
+        start_date: Start date of range (inclusive)
+        end_date: End date of range (inclusive)
+        
+    Returns:
+        Nested dictionary organized by date, then by user
+    """
+    if not user_names:
+        return {}
+    
+    # Fetch all reports for these users in the date range
+    query = """
+        SELECT 
+            user_name,
+            report_date,
+            yesterday_work,
+            today_plan,
+            blockers,
+            additional_notes,
+            submitted_at
+        FROM standup_reports
+        WHERE user_name = ANY($1)
+        AND report_date >= $2
+        AND report_date <= $3
+        ORDER BY report_date ASC, submitted_at ASC
+    """
+    
+    reports = await fetch_all(query, user_names, start_date, end_date)
+    
+    # Build the nested structure
+    result = {}
+    
+    # Generate all dates in range
+    current_date = start_date
+    while current_date <= end_date:
+        result[current_date] = {user: None for user in user_names}
+        current_date += timedelta(days=1)
+    
+    # Fill in the reports
+    for report in reports:
+        report_date = report['report_date']
+        user_name = report['user_name']
+        
+        if report_date in result and user_name in result[report_date]:
+            result[report_date][user_name] = report
+    
+    return result
 
 
 async def get_cached_summary(summary_date: date) -> Optional[Dict[str, Any]]:

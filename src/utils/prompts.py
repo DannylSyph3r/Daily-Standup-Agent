@@ -65,6 +65,39 @@ Extract their name and respond ONLY with valid JSON:
 DO NOT include any explanations, only the JSON object."""
 
 
+def get_user_names_extraction_prompt(query: str) -> str:
+    """
+    Get prompt for extracting user names from a query about specific people's standups.
+    
+    Args:
+        query: User's query mentioning people's names
+        
+    Returns:
+        Formatted user names extraction prompt
+    """
+    return f"""You are a name extraction specialist. Extract all user names mentioned in this query.
+
+QUERY:
+{query}
+
+The query is asking for standup reports for specific people. Extract all names mentioned.
+
+Examples:
+- "Show me Sarah's standup for today" → ["Sarah"]
+- "Get John and Mike's updates for this week" → ["John", "Mike"]
+- "I want to see Sarah, John, and Emily's standups from Monday" → ["Sarah", "John", "Emily"]
+- "What did Bob work on yesterday?" → ["Bob"]
+
+Respond ONLY with valid JSON in this exact format:
+{{
+    "user_names": ["name1", "name2", ...]
+}}
+
+If no names are found, return an empty array: {{"user_names": []}}
+
+DO NOT include any explanations, only the JSON object."""
+
+
 def get_summary_prompt(reports: list) -> str:
     """
     Get prompt for generating team summary from reports.
